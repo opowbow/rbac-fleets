@@ -66,7 +66,6 @@ roleRef:
 EOF
 done
 
-kubectl describe rolebindings -n ns-standard-checkout
 
 # Track B. GKE Fleet Team Scopes
 # 1. Enable Fleet Observability & Scope Logs
