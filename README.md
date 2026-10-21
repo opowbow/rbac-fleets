@@ -1,44 +1,60 @@
 # `rbac-fleets`: GKE Standard RBAC vs. Fleet Team Scopes Demo
 
-A hands-on Google Cloud / GKE demo environment comparing **Standard Per-Cluster Kubernetes RBAC** (`Track A`) against **GKE Fleet Team Management (`Scopes` & `Fleet Namespaces`)** (`Track B`) across two multi-region GKE Autopilot clusters (`cluster-a` in `europe-west1` and `cluster-b` in `us-central1`).
+Companion scripts for the walkthrough **GKE Fleet Scopes: Unifying Multi-Cluster RBAC and Logging**, comparing:
+
+* **Track A — Traditional Per-Cluster Kubernetes RBAC:** Per-cluster `Namespace` (`ns-standard-checkout`) and `RoleBinding` (`standard-checkout-edit`) applied cluster-by-cluster for developer `ALPHA_USER`.
+* **Track B — Central GKE Fleet Team Scope:** Single Fleet Team Scope (`team-payments`), Fleet Namespace (`ns-fleet-payments`), `add-app-operator-binding`, and isolated Fleet Scope Logs (`fleet-o11y-scope-team-payments`) for developer `BRAVO_USER`.
 
 ## Repository Structure
 
 ~~~text
 rbac-fleets/
-├── README.md                # Overview & quickstart instructions
+├── README.md                           # Overview & usage instructions
 └── scripts/
-    ├── setup.sh             # Provisions Track A (Standard K8s RBAC) & Track B (Fleet Scope + Scope Logs)
-    ├── demo-verify.sh       # Verifies multi-cluster RBAC actuation & isolated Fleet Scope Logs
-    └── teardown.sh          # Surgical cleanup of demo resources (leaves existing clusters intact by default)
+    ├── 00-env.sh                       # Shared environment variables (PROJECT_ID, ALPHA_USER, BRAVO_USER, regions)
+    ├── 01-setup-clusters.sh            # Enables APIs, sets node SA IAM role, provisions cluster-a & cluster-b with --enable-fleet
+    ├── 02-setup-track-a-rbac.sh        # Track A: Grants clusterViewer & applies ns-standard-checkout RoleBinding per cluster
+    ├── 03-setup-track-b-fleet.sh       # Track B: Enables Fleet Observability (COPY), creates team-payments Scope, ns-fleet-payments & Bravo binding
+    ├── 04-test-rbac.sh                 # Test 1: Verifies multi-cluster namespace actuation & kubectl auth can-i (Alpha vs. Bravo)
+    ├── 05-test-logging.sh              # Test 2: Deploys crashing payment-worker, deletes after log flush, tests Cloud Logging isolation
+    ├── setup.sh                        # Master setup wrapper (runs 01, 02, and 03 in sequence)
+    ├── demo-verify.sh                  # Master verification wrapper (runs 04-test-rbac.sh and 05-test-logging.sh)
+    └── teardown.sh                     # Cleans up demo resources (pass --delete-clusters to also delete cluster-a & cluster-b)
 ~~~
-
-## What Each Script Does
-
-* **`scripts/setup.sh`**
-  * Enables required GKE, Fleet (`gkehub`), Connect Gateway, and Cloud Logging APIs.
-  * Creates (or reuses existing) `cluster-a` (`europe-west1`) and `cluster-b` (`us-central1`) and registers them to the Fleet.
-  * **Track A (`ns-standard-checkout`):** Applies a standard Kubernetes `Namespace` and `RoleBinding` (`ClusterRole/edit`) per cluster.
-  * **Track B (`team-payments` / `ns-fleet-payments`):** Creates a single Fleet Team Scope (`team-payments`), binds both clusters, creates the Fleet Namespace `ns-fleet-payments`, binds the operator identity via `add-app-operator-binding`, and configures the isolated `fleet-o11y-scope-team-payments` Cloud Logging bucket, views, and Log Router sink.
-* **`scripts/demo-verify.sh`**
-  * **Moment 1:** Connects to both clusters via Fleet memberships and verifies that `ns-fleet-payments` and the `fleet-rrb-actuation-*` `RoleBinding` were reconciled automatically.
-  * **Moment 2:** Emits a simulated crashed-pod error log (`FATAL: Checkout DB timeout code=5004`) for `ns-fleet-payments` and queries it back from the isolated `fleet-o11y-scope-team-payments-k8s_container` Log View.
-* **`scripts/teardown.sh`**
-  * Safely removes **only** the demo resources (`RBACRoleBindings`, Fleet Namespace `ns-fleet-payments`, cluster membership bindings, `team-payments` Scope, `fleet-o11y-*` sink/bucket, and `ns-standard-checkout`) while leaving `cluster-a`, `cluster-b`, and the GCP project intact.
-  * Optional flags: `--delete-clusters` (also deletes `cluster-a` and `cluster-b`) or `--delete-project`.
 
 ## Quick Start
 
-~~~bash
-export PROJECT_ID="op-hack-001"
-export DEV_SUBJECT="admin@powerm-1.altostrat.com"
+### Option 1: Run Step-by-Step (Following the Blog Walkthrough)
 
-# 1. Provision Track A & Track B demo environment
+~~~bash
+# 0. Load environment variables (override ALPHA_USER / BRAVO_USER if desired)
+source ./scripts/00-env.sh
+
+# 1. Enable APIs, node SA logging role, and create cluster-a (europe-west1) & cluster-b (us-central1)
+./scripts/01-setup-clusters.sh
+
+# 2. Set up Track A (Standard per-cluster Kubernetes RBAC for ALPHA_USER)
+./scripts/02-setup-track-a-rbac.sh
+
+# 3. Set up Track B (GKE Fleet Team Scope, Fleet Namespace & Scope Logs for BRAVO_USER)
+./scripts/03-setup-track-b-fleet.sh
+
+# 4. Run Test 1: Verify multi-cluster RBAC & automatic namespace reconciliation
+./scripts/04-test-rbac.sh
+
+# 5. Run Test 2: Crashed pod post-mortem logging (Alpha vs. Bravo)
+./scripts/05-test-logging.sh
+~~~
+
+### Option 2: Run All-in-One Wrapper Scripts
+
+~~~bash
+# Run all setup steps (01, 02, 03)
 ./scripts/setup.sh
 
-# 2. Run verification checks
+# Run both verification tests (Test 1 & Test 2)
 ./scripts/demo-verify.sh
 
-# 3. Tear down demo resources (keeps clusters intact)
+# Clean up demo resources (or pass --delete-clusters to also remove cluster-a & cluster-b)
 ./scripts/teardown.sh
 ~~~
