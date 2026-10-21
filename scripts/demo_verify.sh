@@ -21,8 +21,11 @@ done
 # ------------------------------------------------------------------------------
 # Test 2: Pod Logging (Alpha vs. Bravo)
 # ------------------------------------------------------------------------------
+
+# a. Deploy Application and wait for running pods
+# a1. Deploy Application
 gcloud container fleet memberships get-credentials cluster-a --location="${REGION_1}" --project="${PROJECT_ID}"
-# 1. Deploy failing payment-worker into both Track A and Track B namespaces
+
 for NS in ns-standard-checkout ns-fleet-payments; do
   kubectl apply -n "${NS}" -f - <<'EOF'
 apiVersion: apps/v1
@@ -58,7 +61,9 @@ spec:
               memory: "64Mi"
 EOF
 done
-# 2. Wait for pods to run and fluentbit-gke to flush container logs to Cloud Logging
+
+
+# a2. Wait for runing pods
 for NS in ns-standard-checkout ns-fleet-payments; do 
   echo "Checking status of payment-worker pods in namespace ${NS}..." 
   until kubectl get pods -n "${NS}" -l app=payment-worker 2>/dev/null | grep -qE 'Running|Error|CrashLoopBackOff'; do 
@@ -68,25 +73,31 @@ for NS in ns-standard-checkout ns-fleet-payments; do
 done 
 echo "All pod checks completed."
 
-# 3. Setup env variables for running pods
+# b. Wait for logs to be flushed to Cloud Logging
+# b1. Set pod vars
 ALPHA_POD=$(kubectl get pods -n ns-standard-checkout -l app=payment-worker -o jsonpath='{.items[0].metadata.name}')
 BRAVO_POD=$(kubectl get pods -n ns-fleet-payments -l app=payment-worker -o jsonpath='{.items[0].metadata.name}')
-# 4. Check logs are written to cloud logging
+
+# b2. Check logs are written to cloud logging
 until [ -n "$(gcloud logging read 'resource.type="k8s_container" AND resource.labels.namespace_name="ns-standard-checkout" AND textPayload:"FATAL: Checkout DB timeout code=5004"' --project="${PROJECT_ID}" --limit=1 --format='value(textPayload)' 2>/dev/null)" ]; do 
   echo "Waiting for fluentbit-gke flush to Cloud Logging..." 
   sleep 10 
 done 
 echo "Logs flushed and detected in Cloud Logging!"
 
-# 5. Delete both Deployments so the pods no longer exist in the Kubernetes API
+# b3. Delete the deployments
 kubectl delete deployment payment-worker -n ns-standard-checkout
 kubectl delete deployment payment-worker -n ns-fleet-payments
 
-# 1. Both Alpha and Bravo users try kubectl logs -> Fails (logs NotFound):
+
+# check1 - Both Alpha and Bravo users try kubectl logs → Fails (logs NotFound):
+
 kubectl logs "${ALPHA_POD}" -n ns-standard-checkout --as="${ALPHA_USER}"
 kubectl logs "${BRAVO_POD}" -n ns-fleet-payments --as="${BRAVO_USER}"
 
-# 2. Track A (ALPHA_USER) queries Cloud Logging (_Default bucket) -> Fails (PERMISSION_DENIED):
+
+# check2 - Track A (ALPHA_USER) queries Cloud Logging (_Default bucket) -> Fails (PERMISSION_DENIED):
+
 gcloud logging read \
   'resource.type="k8s_container" AND resource.labels.namespace_name="ns-standard-checkout" AND textPayload:"FATAL: Checkout DB timeout code=5004"' \
   --bucket="_Default" --location=global --view="_Default" \
@@ -95,7 +106,8 @@ gcloud logging read \
   --limit=3
 # Output: ERROR: (gcloud.logging.read) PERMISSION_DENIED: The caller does not have permission
 
-# 3. Track B (BRAVO_USER) queries the Fleet Scope Log View -> Succeeds!
+# Check3 - Track B (BRAVO_USER) queries the Fleet Scope Log View → Succeeds!
+
 gcloud logging read \
   'resource.type="k8s_container" AND resource.labels.namespace_name="ns-fleet-payments" AND textPayload:"FATAL: Checkout DB timeout code=5004"' \
   --bucket="fleet-o11y-scope-team-payments" \
