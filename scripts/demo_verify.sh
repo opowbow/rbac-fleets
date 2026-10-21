@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# setup_verify.sh — Complete Setup & Verification Steps from the Blog Post
+# demo_verify.sh — Complete Setup & Verification Steps from the Blog Post
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
