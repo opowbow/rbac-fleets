@@ -1,20 +1,16 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # teardown.sh — Surgical Teardown Script for GKE RBAC vs. Fleet Team Scopes
-#
-# By default, safely removes the demo resources (test Deployments, Fleet
-# app-operator binding & RBACRoleBindings, Fleet Namespace, Membership Bindings,
-# Team Scope, Scope Log Sink/Bucket, and Track A Namespace) while leaving your
-# clusters and GCP project intact.
-#
-# Optional flags:
-#   --delete-clusters   Also delete cluster-a and cluster-b
-#   --delete-project    Delete the entire GCP project (use ONLY on a throwaway project)
 # ==============================================================================
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/00-env.sh"
+export PROJECT_ID=$(gcloud config get-value project)
+export ADMIN_USER=$(gcloud config get-value account)
+export ADMIN_DOMAIN="${ADMIN_USER#*@}"
+export ALPHA_USER="${ALPHA_USER:-alpha@${ADMIN_DOMAIN}}"
+export BRAVO_USER="${BRAVO_USER:-bravo@${ADMIN_DOMAIN}}"
+export REGION_1="europe-west1"
+export REGION_2="us-central1"
 
 DELETE_CLUSTERS=false
 DELETE_PROJECT=false
